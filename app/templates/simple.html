@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Video Upload Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        video {
+            max-width: 100%;
+            margin-top: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Simple Video Upload Test</h1>
+        <p>This page tests basic video upload functionality.</p>
+        
+        <input type="file" id="videoInput" accept="video/*">
+        <div>
+            <button id="uploadButton">Upload Video</button>
+        </div>
+        
+        <h2>Preview:</h2>
+        <video id="videoPreview" controls></video>
+        
+        <div id="result" style="margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        // Simple direct JavaScript with no dependencies
+        document.addEventListener('DOMContentLoaded', function() {
+            const videoInput = document.getElementById('videoInput');
+            const videoPreview = document.getElementById('videoPreview');
+            const uploadButton = document.getElementById('uploadButton');
+            const result = document.getElementById('result');
+            
+            // Display video preview when selected
+            videoInput.addEventListener('change', function(e) {
+                try {
+                    const file = e.target.files[0];
+                    if (file) {
+                        console.log("File selected:", file.name, file.type, file.size);
+                        result.innerHTML = `<p>File selected: ${file.name} (${file.type}, ${(file.size/1024/1024).toFixed(2)} MB)</p>`;
+                        
+                        const videoURL = URL.createObjectURL(file);
+                        videoPreview.src = videoURL;
+                        videoPreview.style.display = 'block';
+                        
+                        videoPreview.onloadeddata = function() {
+                            result.innerHTML += `<p>Video loaded successfully. Duration: ${videoPreview.duration.toFixed(2)} seconds</p>`;
+                        };
+                        
+                        videoPreview.onerror = function() {
+                            result.innerHTML += `<p style="color: red;">Error loading video: ${videoPreview.error ? videoPreview.error.message : "Unknown error"}</p>`;
+                        };
+                    }
+                } catch (error) {
+                    console.error("Error:", error);
+                    result.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+                }
+            });
+            
+            // Upload button
+            uploadButton.addEventListener('click', function() {
+                const file = videoInput.files[0];
+                if (!file) {
+                    result.innerHTML = '<p style="color: red;">Please select a video file first.</p>';
+                    return;
+                }
+                
+                result.innerHTML += '<p>Simulating upload (no actual upload happens in this test)...</p>';
+                
+                // Simulate success after 2 seconds
+                setTimeout(() => {
+                    result.innerHTML += '<p style="color: green;">Upload simulation complete! In a real app, this would send the file to the server.</p>';
+                }, 2000);
+            });
+        });
+    </script>
+</body>
+</html>

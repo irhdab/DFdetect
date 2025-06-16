@@ -1,0 +1,133 @@
+/* General styles */
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+/* Video preview */
+#upload-video-preview, #webcam-video {
+    width: 100%;
+    max-height: 400px;
+    background-color: #000;
+    border-radius: 5px;
+}
+
+/* Timeline styles */
+.timeline-container {
+    position: relative;
+    height: 50px;
+    background-color: #e9ecef;
+    border-radius: 5px;
+    margin: 10px 0;
+    overflow: hidden;
+}
+
+.timeline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+}
+
+.timeline-marker {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 2px;
+    height: 100%;
+    background-color: #dc3545;
+    z-index: 10;
+}
+
+.timeline-point {
+    position: absolute;
+    top: 0;
+    width: 5px;
+    height: 100%;
+    cursor: pointer;
+}
+
+/* Webcam overlay */
+.position-relative {
+    position: relative;
+}
+
+#overlay-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+/* Results table */
+.table-responsive {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Confidence indicator bar in results table */
+.confidence-indicator {
+    display: block;
+    margin-top: 5px;
+    border-radius: 2px;
+}
+
+/* Highlight high/low confidence fake frames */
+.high-confidence {
+    background-color: rgba(220, 53, 69, 0.1) !important;
+    font-weight: bold;
+}
+
+.low-confidence {
+    background-color: rgba(40, 167, 69, 0.1) !important;
+}
+
+/* Make table rows interactive */
+#results-table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#results-table tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.1) !important;
+}
+
+/* Progress bar for fake probability */
+#fake-probability {
+    transition: width 0.3s ease;
+}
+
+/* Animations */
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.recording-indicator {
+    animation: pulse 1.5s infinite;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #dc3545;
+    margin-right: 5px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .col-md-6, .col-md-8, .col-md-4 {
+        margin-bottom: 20px;
+    }
+} 
