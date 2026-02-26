@@ -47,6 +47,9 @@ class VideoProcessor:
         self.video_path = video_path
         self.max_frames = max_frames
         self.video_info = {}
+        # Smoothing buffer for temporal stability
+        self._confidence_buffer: List[float] = []
+        self._smoothing_window = 5
 
     # ------------------------------------------------------------------
     # Public API
@@ -294,13 +297,22 @@ class VideoProcessor:
         if not face_results:
             return None
 
+        # Apply temporal smoothing for confidence_fake
+        raw_max_fake = float(max_fake_prob)
+        self._confidence_buffer.append(raw_max_fake)
+        if len(self._confidence_buffer) > self._smoothing_window:
+            self._confidence_buffer.pop(0)
+        
+        smoothed_prob = sum(self._confidence_buffer) / len(self._confidence_buffer)
+
         result: Dict[str, Any] = {
             "frame": int(frame_no),
-            "confidence_fake": round(float(max_fake_prob), 4),
+            "confidence_fake": round(float(smoothed_prob), 4),
+            "raw_confidence": round(raw_max_fake, 4),
             "face_count": len(faces),
         }
 
-        # Optionally add annotated frame as base64 JPEG
+        # Optionally add annotated frame
         if generate_overlay:
             overlay = self._draw_overlay(frame, face_results)
             result["overlay_frame"] = self._cv2_to_base64(overlay)

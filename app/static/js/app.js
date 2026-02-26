@@ -21,8 +21,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Global variables
-const MAX_ANALYSIS_TIME = 30000; // 30 seconds max before forcing completion
-const MAX_STALLED_TIME = 5000; // 5 seconds of no progress before advancing
+const MAX_ANALYSIS_TIME = 30000; // 30 seconds max
+const MAX_STALLED_TIME = 5000; // 5 seconds of no progress
 
 // Global variables for managing video analysis state
 let uploadedFileId = null;
@@ -355,7 +355,7 @@ function startProgressPolling(fileId) {
     const forceCompletionTimeout = setTimeout(() => {
         console.log("Force completing analysis due to timeout");
         requestAnalysis(fileId);
-    }, 20000); // 20 seconds max wait time (reduced from 45)
+    }, MAX_ANALYSIS_TIME);
     
     // Show faster progress updates to improve perceived performance
     let progress = 0;
@@ -374,11 +374,10 @@ function startProgressPolling(fileId) {
             pollCount++;
             
             if (pollCount > maxPolls) {
+                console.log("Max polls reached, attempting final fetch");
                 clearInterval(pollInterval);
                 clearInterval(progressInterval);
                 clearTimeout(forceCompletionTimeout);
-                showMessage('Processing timed out. Attempting to display available results.', 'warning');
-                // Try to get whatever results are available
                 requestAnalysis(fileId);
                 return;
             }
@@ -1386,7 +1385,6 @@ function showFrameDetails(result) {
             infoText.textContent = `Frame ${result.frame} (${time}s) - ${Math.round(result.confidence_fake * 100)}% fake`;
         }
     } else {
-        // Fallback for frames without overlay data
         console.log("No overlay data for this frame");
     }
 }

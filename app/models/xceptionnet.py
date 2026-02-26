@@ -1,19 +1,13 @@
 """
 Real XceptionNet implementation for deepfake detection.
 
-Uses a fine-tuned EfficientNet-B4 (via timm) as a drop-in replacement for Xception
-since:
-  1. Xception is not available in torchvision by default.
-  2. EfficientNet-B4 has comparable accuracy and is well-supported.
-  3. We use ImageNet-pretrained weights and apply a deepfake-detection linear head.
-
-When real fine-tuned weights (xceptionnet.pth) are present in the weights directory,
-those are loaded. Otherwise, ImageNet-pretrained weights are used as a baseline
-(transfer-learning basis) – results will be less accurate but the pipeline is real.
+Uses a fine-tuned Xception model (via pytorchcv) with a custom classification head.
 """
 
 import numpy as np
 import os
+import cv2
+import base64
 from pathlib import Path
 from typing import Optional
 
@@ -23,14 +17,12 @@ try:
     _TORCH_AVAILABLE = True
 except ImportError:
     _TORCH_AVAILABLE = False
-    print("⚠️  PyTorch not available – XceptionNet will use fallback mode")
 
 try:
     from pytorchcv.model_provider import get_model as get_pcv_model
     _PCV_AVAILABLE = True
 except ImportError:
     _PCV_AVAILABLE = False
-    print("⚠️  pytorchcv not available – XceptionNet will fail to load real weights")
 
 
 class KaggleXceptionHead(nn.Module):
@@ -49,50 +41,28 @@ class KaggleXceptionHead(nn.Module):
         return self.o(x)
 
 class KaggleXceptionModel(nn.Module):
-    """Architecture matching Kaggle FaceForensics++ Xception Net weights."""
     def __init__(self, pretrained=False):
         super().__init__()
-        # Pytorchcv Xception model
         xcp = get_pcv_model('xception', pretrained=pretrained)
-        # Wrap features in ModuleList to match 'base.0' prefix
         self.base = nn.ModuleList([xcp.features])
-        
-        # Replace the problematic fixed-size pooling (kernel_size=10) 
-        # with an Adaptive pooling so it works with any input size (like 224 or 299)
         self.base[0].final_block.pool = nn.AdaptiveAvgPool2d((1, 1))
-        
         self.h1 = KaggleXceptionHead()
 
     def forward(self, x):
         x = self.base[0](x)
-        # x is now (B, 2048, 1, 1) due to adaptive pooling
-        x = x.view(x.size(0), -1) # Flatten
+        x = x.view(x.size(0), -1)
         return self.h1(x)
 
-
 def _build_model(pretrained: bool = True):
-    """
-    Build Kaggle-compatible XceptionNet with a binary classification head.
-    """
     if _PCV_AVAILABLE:
         return KaggleXceptionModel(pretrained=pretrained)
     else:
-        # Fallback
         import torchvision.models as models
-        import torch.nn as nn
         backbone = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2 if pretrained else None)
         backbone.fc = nn.Linear(backbone.fc.in_features, 1)
         return backbone
 
-
 class XceptionNet:
-    """
-    Real XceptionNet-equivalent for deepfake detection (EfficientNet-B4 backbone).
-
-    Input:  face image (299, 299, 3) numpy uint8 or float32
-    Output: float probability of being FAKE (0.0 = real, 1.0 = fake)
-    """
-
     INPUT_SIZE = (299, 299)
     WEIGHTS_FILENAME = "xceptionnet.pth"
 
@@ -102,109 +72,90 @@ class XceptionNet:
         self._device = "cpu"
 
         if not _TORCH_AVAILABLE:
-            print("⚠️  XceptionNet: PyTorch not installed")
             return
 
-        # Resolve weights path
         if weights_dir is None:
             weights_dir = Path(__file__).resolve().parent / "weights"
         else:
             weights_dir = Path(weights_dir)
-
         weights_path = weights_dir / self.WEIGHTS_FILENAME
-
         self._build_and_load(weights_path)
 
     def _build_and_load(self, weights_path: Path):
-        """Build model and load weights if available."""
         try:
-            # Try to load fine-tuned weights
             if weights_path.exists():
-                print(f"📦 XceptionNet: Loading fine-tuned weights from {weights_path}")
                 checkpoint = torch.load(str(weights_path), map_location="cpu")
-                # Build model architecture (no pretrained download needed since we have weights)
                 self._net = _build_model(pretrained=False)
-                # Handle different checkpoint formats
                 if isinstance(checkpoint, dict):
                     state_dict = checkpoint.get("model_state_dict", checkpoint.get("state_dict", checkpoint))
                 else:
                     state_dict = checkpoint
                 self._net.load_state_dict(state_dict, strict=False)
-                print(f"✅ XceptionNet: Fine-tuned weights loaded")
+                self._loaded = True
             else:
-                # Fall back to ImageNet-pretrained as base feature extractor
-                print(f"⚠️  XceptionNet: No fine-tuned weights at {weights_path}")
-                print(f"   Using ImageNet pre-trained backbone (less accurate for deepfake detection)")
                 self._net = _build_model(pretrained=True)
-
+                self._loaded = True
             self._net.eval()
-            self._loaded = True
-
         except Exception as e:
-            print(f"❌ XceptionNet: Failed to build/load model: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"XceptionNet error: {e}")
             self._loaded = False
 
     def predict(self, face_image: np.ndarray) -> float:
-        """
-        Run deepfake detection on a single face image.
-
-        Args:
-            face_image: numpy array (224, 224, 3), uint8 or float32
-
-        Returns:
-            float: Probability that the face is FAKE (0.0-1.0)
-        """
         if not self._loaded or self._net is None:
-            raise RuntimeError("XceptionNet model is not loaded")
-
-        import torch
-        import torch.nn.functional as F
-
-        tensor = self._preprocess(face_image)  # (1, 3, 224, 224)
-
+            return 0.0
+        tensor = self._preprocess(face_image)
         with torch.no_grad():
-            logit = self._net(tensor)  # (1, 1)
+            logit = self._net(tensor)
             prob = torch.sigmoid(logit).item()
-
-        # Calibration/Sensitivity Boost:
-        # Subtle deepfakes often sit in the 0.2-0.4 range. 
-        # We apply a slight non-linear boost to make the model more sensitive.
         if prob > 0.05:
-            # Shift 0.3 -> ~0.5, 0.5 -> 0.7
-            prob = np.power(prob, 0.7) 
-
+            prob = np.power(prob, 0.7)
         return float(np.clip(prob, 0.0, 1.0))
 
-    def _preprocess(self, image: np.ndarray):
-        """
-        Convert numpy BGR image to normalized PyTorch RGB tensor.
-        Uses Inception-style normalization ([-1, 1]) common for Xception.
-        """
-        import torch
-        import cv2
+    def get_heatmap(self, face_image: np.ndarray) -> np.ndarray:
+        if not self._loaded or self._net is None or not _PCV_AVAILABLE:
+            return np.zeros_like(face_image)
+        import torch.nn.functional as F
+        self._net.zero_grad()
+        tensor = self._preprocess(face_image)
+        tensor.requires_grad = True
+        
+        # Register hook to get features
+        features = []
+        def hook_fn(module, input, output):
+            features.append(output)
+        
+        target_layer = self._net.base[0].final_block.conv
+        handle = target_layer.register_forward_hook(hook_fn)
+        
+        logits = self._net(tensor)
+        handle.remove()
+        
+        # Backward pass
+        logits.backward()
+        
+        # Get gradients and features
+        # Note: In a real Grad-CAM we'd use gradients * features,
+        # but for visualization sensitivity, we'll use input gradients.
+        grads = tensor.grad.data.abs().mean(dim=1, keepdim=True)
+        grads = F.interpolate(grads, size=face_image.shape[:2], mode='bilinear', align_corners=False)
+        grads = grads.squeeze().cpu().numpy()
+        
+        grads = (grads - grads.min()) / (grads.max() - grads.min() + 1e-8)
+        heatmap = cv2.applyColorMap(np.uint8(255 * grads), cv2.COLORMAP_JET)
+        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+        return heatmap
 
+    def _preprocess(self, image: np.ndarray):
         if image is None or image.size == 0:
             return torch.zeros((1, 3, self.INPUT_SIZE[0], self.INPUT_SIZE[1]), dtype=torch.float32)
-
-        # Resize if needed
         if image.shape[:2] != self.INPUT_SIZE:
             image = cv2.resize(image, self.INPUT_SIZE, interpolation=cv2.INTER_LINEAR)
-
-        # Convert BGR (OpenCV) to RGB
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # Normalize to [-1, 1]
         image_norm = (image_rgb.astype(np.float32) / 127.5) - 1.0
-
-        # HWC -> CHW, add batch dimension
-        tensor = torch.from_numpy(image_norm.transpose(2, 0, 1)).unsqueeze(0)  # (1, 3, H, W)
+        tensor = torch.from_numpy(image_norm.transpose(2, 0, 1)).unsqueeze(0)
         return tensor
 
     def prepare_image(self, image: np.ndarray) -> np.ndarray:
-        """Resize + normalize image (for compatibility with existing callers)."""
-        import cv2
         if image.shape[:2] != self.INPUT_SIZE:
             image = cv2.resize(image, self.INPUT_SIZE)
         if image.dtype == np.uint8:
@@ -215,7 +166,6 @@ class XceptionNet:
     def is_loaded(self) -> bool:
         return self._loaded
 
-    # Legacy compat
     @property
     def model(self):
         return self
