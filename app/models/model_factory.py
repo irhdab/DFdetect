@@ -2,78 +2,70 @@ from app.models.mesonet import MesoNet
 from app.models.xceptionnet import XceptionNet
 from pathlib import Path
 
+
 class ModelFactory:
     """
-    Factory class for creating and managing deepfake detection models
+    Factory class for creating and managing real deepfake detection models.
     """
-    
-    # Available model types
+
     AVAILABLE_MODELS = ["mesonet", "xceptionnet"]
-    
+
     def __init__(self, weights_dir=None):
+        self.weights_dir = Path(weights_dir) if weights_dir else Path(__file__).parent / "weights"
+        self._cache: dict = {}
+
+    def create_model(self, model_name: str):
         """
-        Initialize the model factory
-        
-        Args:
-            weights_dir: Directory to store model weights
-        """
-        self.weights_dir = Path(weights_dir) if weights_dir else None
-    
-    def create_model(self, model_name):
-        """
-        Create a model instance based on the model name
-        
-        Args:
-            model_name: Name of the model to create
-            
-        Returns:
-            Model instance
+        Return a loaded model instance (cached after first load).
         """
         model_name = model_name.lower()
-        
+
+        if model_name not in self.AVAILABLE_MODELS:
+            raise ValueError(f"Unknown model: {model_name}. Choose from {self.AVAILABLE_MODELS}")
+
+        if model_name in self._cache:
+            return self._cache[model_name]
+
         if model_name == "mesonet":
-            return MesoNet()
+            instance = MesoNet(weights_dir=str(self.weights_dir))
         elif model_name == "xceptionnet":
-            return XceptionNet()
+            instance = XceptionNet(weights_dir=str(self.weights_dir))
         else:
             raise ValueError(f"Unknown model: {model_name}")
-    
-    def get_model_info(self, model_name):
-        """
-        Get information about a model
-        
-        Args:
-            model_name: Name of the model
-            
-        Returns:
-            Dictionary with model information
-        """
+
+        self._cache[model_name] = instance
+        return instance
+
+    def get_model_info(self, model_name: str) -> dict:
         model_name = model_name.lower()
-        
-        if model_name == "mesonet":
-            return {
+        info_map = {
+            "mesonet": {
                 "id": "mesonet",
                 "name": "MesoNet",
-                "description": "Lightweight CNN (faster)"
-            }
-        elif model_name == "xceptionnet":
-            return {
+                "description": "Lightweight 4-layer CNN optimized for face manipulation detection (fast)",
+                "loaded": False,
+            },
+            "xceptionnet": {
                 "id": "xceptionnet",
                 "name": "XceptionNet",
-                "description": "Deep CNN (more accurate)"
-            }
-        else:
-            return {
-                "id": "unknown",
-                "name": "Unknown Model",
-                "description": "Unknown model type"
-            }
-    
-    def get_available_models(self):
-        """
-        Get list of available models
-        
-        Returns:
-            List of model information dictionaries
-        """
-        return [self.get_model_info(model) for model in self.AVAILABLE_MODELS] 
+                "description": "EfficientNet-B4 backbone for deepfake detection (more accurate)",
+                "loaded": False,
+            },
+        }
+
+        info = info_map.get(model_name, {
+            "id": "unknown",
+            "name": "Unknown Model",
+            "description": "Unknown model type",
+            "loaded": False,
+        })
+
+        # Report real loaded status if model is cached
+        if model_name in self._cache:
+            info = info.copy()
+            info["loaded"] = getattr(self._cache[model_name], "is_loaded", False)
+
+        return info
+
+    def get_available_models(self) -> list:
+        return [self.get_model_info(m) for m in self.AVAILABLE_MODELS]

@@ -148,6 +148,14 @@ function initDeepfakeChart() {
                             }
                         }
                     }
+                },
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        if (window.lastVideoResults && window.lastVideoResults[index]) {
+                            showFrameDetails(window.lastVideoResults[index]);
+                        }
+                    }
                 }
             }
         });
@@ -460,6 +468,7 @@ function processResults(data) {
     
     // Process results
     const results = data.results || [];
+    window.lastVideoResults = results; // Store for interaction
     
     // Calculate average confidence
     let totalConfidence = 0;
@@ -882,6 +891,9 @@ function initWebcam() {
             
             isAnalyzing = true;
             
+            // Start the frame capture loop
+            startFrameCapture();
+            
         } catch (error) {
             console.error('Error starting webcam:', error);
             webcamStatus.className = 'alert alert-danger';
@@ -1037,6 +1049,33 @@ function initWebcam() {
         });
         
         webcamChart.update();
+    }
+
+    // Capture and send webcam frame to server
+    function startFrameCapture() {
+        if (!isAnalyzing || !websocket || websocket.readyState !== WebSocket.OPEN) {
+            if (isAnalyzing) {
+                setTimeout(startFrameCapture, 500); // Wait for socket
+            }
+            return;
+        }
+        
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = webcamVideo.videoWidth || 640;
+            canvas.height = webcamVideo.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.6); // Lower quality for speed
+            websocket.send(dataUrl);
+        } catch (err) {
+            console.error('Error capturing frame:', err);
+        }
+        
+        if (isAnalyzing) {
+            setTimeout(startFrameCapture, 200); // 5 frames per second
+        }
     }
 }
 
@@ -1326,17 +1365,30 @@ function getCookie(name) {
 
 // Show details for a specific frame
 function showFrameDetails(result) {
-    // This function can be expanded to show more details about a specific frame
-    console.log('Frame details:', result);
+    if (!result) return;
     
-    // If there's an overlay frame available, you could display it
+    console.log('Showing details for frame:', result.frame);
+    
+    const previewImage = document.getElementById('frame-preview-image');
+    const placeholder = document.getElementById('frame-preview-placeholder');
+    const infoText = document.getElementById('frame-info-text');
+    
     if (result.overlay_frame) {
-        // Display overlay frame if needed
+        // Show the analyzed frame with boxes
+        if (placeholder) placeholder.classList.add('d-none');
+        if (previewImage) {
+            previewImage.src = 'data:image/jpeg;base64,' + result.overlay_frame;
+            previewImage.classList.remove('d-none');
+        }
+        
+        const time = result.timestamp ? result.timestamp.toFixed(2) : (result.frame / 30).toFixed(2);
+        if (infoText) {
+            infoText.textContent = `Frame ${result.frame} (${time}s) - ${Math.round(result.confidence_fake * 100)}% fake`;
+        }
+    } else {
+        // Fallback for frames without overlay data
+        console.log("No overlay data for this frame");
     }
-    
-    // Show confidence in a toast or other UI element
-    const confidencePercent = Math.round(result.confidence_fake * 100);
-    showMessage(`Frame ${result.frame}: ${confidencePercent}% deepfake confidence`, 'info');
 }
 
 

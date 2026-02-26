@@ -1,4 +1,11 @@
+import sys
 import os
+from pathlib import Path
+
+# Add the parent directory of 'app' to sys.path so 'import app.something' works
+# when running this file directly (e.g., via debugger).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import shutil
 import tempfile
 import uuid
@@ -209,15 +216,15 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
                 cap.release()
 
                 try:
-                    # Fix: VideoProcessor.process_video handles its own internal logic
+                    # Clean actual video processing
                     results = await asyncio.wait_for(
                         processor.process_video(str(temp_file_path), str(output_path), generate_overlay=True),
-                        timeout=30.0
+                        timeout=90.0 # Give actual models more time
                     )
                 except asyncio.TimeoutError:
-                    print(f"Timeout processing {file_id}. Generating fallback.")
+                    print(f"Timeout processing {file_id}.")
                     results = {
-                        "results": [{"frame": 0, "confidence_fake": random.uniform(0.1, 0.4)}],
+                        "results": [{"frame": 0, "confidence_fake": 0.0, "error": "Timeout"}],
                         "video_info": {"total_frames": frame_count, "fps": fps, "width": width, "height": height}
                     }
                 
@@ -345,12 +352,37 @@ async def websocket_endpoint(websocket: WebSocket, model: str = Query("mesonet")
             return
         
         async def send_result(result):
-            if websocket.client_state == WebSocketState.CONNECTED:
-                await websocket.send_json({
-                    **result, "model": model, "session_id": session_id
-                })
+            try:
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_json({
+                        **result, "model": model, "session_id": session_id
+                    })
+            except Exception:
+                pass
         
-        await processor.process_webcam(send_result)
+        async def receive_loop():
+            while True:
+                try:
+                    # Receive frame data from the WebSocket
+                    data = await websocket.receive_text()
+                    
+                    if data.startswith("data:image/jpeg;base64,"):
+                        b64_data = data.split(",")[1]
+                        # Decode base64 to OpenCV image
+                        img_bytes = base64.b64decode(b64_data)
+                        np_arr = np.frombuffer(img_bytes, np.uint8)
+                        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                        if frame is not None:
+                            # Update the processor's current webcam frame so its async loop can see it
+                            processor._last_webcam_frame = frame
+                except Exception as e:
+                    print(f"Websocket receive error: {e}")
+                    break
+
+        # Start the processor's processing loop as background task 
+        webcam_task = asyncio.create_task(processor.process_webcam(send_result))
+        await receive_loop()
+        webcam_task.cancel()
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -383,14 +415,21 @@ async def process_photo(file: UploadFile = File(...), model: str = Form("mesonet
         if not face_boxes:
             return {"confidence_fake": 0.0, "processed_image": base64.b64encode(cv2.imencode('.jpg', image)[1]).decode('utf-8'), "model": model}
         
-        max_conf = 0
+        max_conf = 0.0
         for bbox in face_boxes:
-            face = face_detector.extract_face(image, bbox)
-            if face.size == 0: continue
-            prep_face = model_instance.prepare_image(face)
-            conf = float(model_instance.model.predict(np.expand_dims(prep_face, axis=0), verbose=0)[0][0])
+            # Use model-specific input size (e.g., 299 for Xception, 224 for Meso)
+            target_sz = getattr(model_instance, "INPUT_SIZE", (224, 224))
+            face = face_detector.extract_face(image, bbox, target_size=target_sz)
+            
+            if face is None or face.size == 0: continue
+            
+            conf = float(model_instance.predict(face))
             max_conf = max(max_conf, conf)
-            cv2.rectangle(image, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), (0, 0, 255 if conf > 0.5 else 255), 2)
+            
+            color = (0, 0, 255) if conf >= 0.5 else (0, 255, 0)
+            cv2.rectangle(image, (bbox[0], bbox[1]), (bbox[0]+bbox[2], bbox[1]+bbox[3]), color, 2)
+            # Add small label per face
+            cv2.putText(image, f"{conf:.0%}", (bbox[0], bbox[1]-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
         _, buffer = cv2.imencode('.jpg', image)
         return {"confidence_fake": max_conf, "processed_image": base64.b64encode(buffer).decode('utf-8'), "model": model}

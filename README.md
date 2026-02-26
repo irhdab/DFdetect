@@ -1,5 +1,7 @@
 # Real-Time Deepfake Detection Application
 
+> **UPDATE (2026)**: This application has been upgraded from a mock UI prototype to a fully functional AI detection pipeline. It now uses actual OpenCV (DNN) face detection and real ONNX (MesoNet) & PyTorch (XceptionNet/EfficientNet) model inference instead of random values.
+
 This application uses MesoNet and FastAPI to detect deepfakes in uploaded videos, images, or live webcam streams.
 
 ## Features
@@ -14,28 +16,32 @@ This application uses MesoNet and FastAPI to detect deepfakes in uploaded videos
 ## Installation
 
 ### Prerequisites
+
 - Python 3.8 or higher
 - macOS users with Apple Silicon (M1/M2/M3) require special TensorFlow installation
 
 ### Setup Instructions
 
 1. Clone this repository
+
    ```bash
    git clone <repository-url>
    cd deepfakerealtimedetection
    ```
 
 2. Create and activate a virtual environment (recommended)
+
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    ```
 
 3. Install the required packages
+
    ```bash
    # For Intel-based systems
    pip install -r requirements.txt
-   
+
    # For Apple Silicon (M1/M2/M3) Macs
    # Note: You might need to install packages individually if you encounter issues
    pip install fastapi uvicorn
@@ -46,13 +52,17 @@ This application uses MesoNet and FastAPI to detect deepfakes in uploaded videos
 ## Usage
 
 ### Full Application
+
 Start the server:
+
 ```bash
 python3 run.py
 ```
+
 Then open your browser and go to http://localhost:8000
 
 ### Using the Application
+
 1. Upload a video file, image file, or use your webcam for real-time detection
 2. View the analysis results showing confidence scores for deepfake probability
 3. For videos, examine the frame-by-frame timeline for detailed analysis
