@@ -306,14 +306,9 @@ async function requestAnalysis(fileId) {
         console.error('Error requesting analysis:', error);
         showMessage(`Error retrieving results: ${error.message}`, 'danger');
         
-        // Try to continue anyway if we have a file ID
-        if (fileId) {
-            // Force reload the page with the file ID in the URL to trigger a fresh analysis
-            const url = new URL(window.location.href);
-            url.searchParams.set('file_id', fileId);
-            url.searchParams.set('retry', Date.now());  // Add timestamp to force reload
-            window.location.href = url.toString();
-        }
+        // Stop loading state
+        if (uploadStatusElement) uploadStatusElement.classList.add('d-none');
+        analysisInProgress = false;
     }
 }
 
@@ -908,14 +903,16 @@ function initWebcam() {
         }
         
         // Update UI
-        startWebcamBtn.classList.remove('d-none');
-        stopWebcamBtn.classList.add('d-none');
-        webcamStatus.className = 'alert alert-info';
-        webcamStatus.textContent = 'Click "Start Detection" to begin analysis';
+        if (startWebcamBtn) startWebcamBtn.classList.remove('d-none');
+        if (stopWebcamBtn) stopWebcamBtn.classList.add('d-none');
+        if (webcamStatus) {
+            webcamStatus.className = 'alert alert-info';
+            webcamStatus.textContent = 'Click "Start Detection" to begin analysis';
+        }
         
         // Reset connection status
-        connectionIndicator.style.backgroundColor = '#ccc';
-        connectionText.textContent = 'Not connected';
+        if (connectionIndicator) connectionIndicator.style.backgroundColor = '#ccc';
+        if (connectionText) connectionText.textContent = 'Not connected';
         
         isAnalyzing = false;
     }
@@ -1153,12 +1150,12 @@ function initImageUpload() {
             // Process response
             const result = await response.json();
             
-            if (result.success) {
+            if (result.confidence_fake !== undefined) {
                 // Display results
                 displayImageResults(result);
                 showImageMessage('Image analysis complete!', 'success');
             } else {
-                showImageMessage(`Error: ${result.message}`, 'danger');
+                showImageMessage(`Error: ${result.detail || 'Analysis failed'}`, 'danger');
             }
             
             // Hide progress after a delay
@@ -1179,12 +1176,14 @@ function initImageUpload() {
         const resultsSection = document.getElementById('image-results-section');
         resultsSection.classList.remove('d-none');
         
-        // Set original and analyzed images
-        document.getElementById('result-original-image').src = result.original_image;
-        document.getElementById('result-analyzed-image').src = result.analyzed_image;
+        // Set analyzed image (base64)
+        if (result.processed_image) {
+            document.getElementById('result-analyzed-image').src = 'data:image/jpeg;base64,' + result.processed_image;
+        }
         
         // Update confidence bar and text
-        const confidencePercent = Math.round(result.overall_confidence * 100);
+        const confidenceValue = result.confidence_fake || 0;
+        const confidencePercent = Math.round(confidenceValue * 100);
         const confidenceBar = document.getElementById('image-confidence-bar');
         confidenceBar.style.width = `${confidencePercent}%`;
         confidenceBar.setAttribute('aria-valuenow', confidencePercent);
@@ -1216,10 +1215,10 @@ function initImageUpload() {
         }
         
         // Update technical details
-        document.getElementById('image-model-used').textContent = result.model_used;
-        document.getElementById('image-confidence-score').textContent = `${confidencePercent}% (${result.overall_confidence.toFixed(4)})`;
-        document.getElementById('image-processing-time').textContent = `${result.processing_time.toFixed(2)} seconds`;
-        document.getElementById('image-resolution').textContent = `${result.image_info.width} × ${result.image_info.height}`;
+        document.getElementById('image-model-used').textContent = typeof result.model === 'object' ? result.model.name : result.model;
+        document.getElementById('image-confidence-score').textContent = `${confidencePercent}% (${confidenceValue.toFixed(4)})`;
+        document.getElementById('image-processing-time').textContent = result.processing_time ? `${result.processing_time.toFixed(2)} seconds` : 'N/A';
+        document.getElementById('image-resolution').textContent = result.image_info ? `${result.image_info.width} × ${result.image_info.height}` : 'N/A';
     }
 }
 
@@ -1240,10 +1239,10 @@ async function initRestartButton() {
                 
                 const result = await response.json();
                 
-                if (result.success) {
+                if (result.message) {
                     showMessage('Analysis environment restarted successfully. Ready for new uploads.', 'success');
                 } else {
-                    showMessage(`Restart failed: ${result.message}`, 'danger');
+                    showMessage(`Restart failed: ${result.detail || 'Unknown error'}`, 'danger');
                 }
             } catch (error) {
                 console.error('Error restarting analysis:', error);

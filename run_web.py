@@ -30,10 +30,10 @@ app = FastAPI(
 # Set a higher file size limit for uploads (100MB)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"],  # Allow all headers
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Create directories if they don't exist
@@ -161,62 +161,38 @@ async def get_result(file_id: str):
     accuracy_boost = 0.05 if model == "xceptionnet" else 0.0
     
     # Create a unique pattern for this video based on a hash of the file_id
-    # This ensures different videos get different patterns
     id_hash = hash(file_id) % 10000
-    random.seed(id_hash)
+    rng = random.Random(id_hash)
     
-    # Create more balanced pattern types
-    # 0-2: Mostly real, 3-6: Mixed/uncertain, 7-9: Mostly fake
-    pattern_type = random.randint(0, 9)
-    
-    # Base confidence level (0.2-0.8)
+    pattern_type = rng.randint(0, 9)
     base_confidence = 0.2 + (pattern_type / 10.0) * 0.6
-    
-    # Determine the primary pattern shape
-    pattern_shape = random.randint(0, 3)
-    
-    # Generate results for frames throughout the entire video
+    pattern_shape = rng.randint(0, 3)
     results = []
-    
-    # Process frames up to the duration limit
     max_frame = min(total_frames, int(duration * fps))
     
-    # Process frames across the entire video length
     for frame_idx in range(0, max_frame, frame_interval):
-        # Skip frames that would exceed the duration
         if frame_idx / fps > duration:
             break
-            
-        # Calculate normalized position in video (0.0 to 1.0)
         position = frame_idx / max_frame
-        
-        # Apply the pattern shape
         if pattern_shape == 0:
-            # Flat pattern with small variations
-            variation = random.uniform(-0.15, 0.15)
+            variation = rng.uniform(-0.15, 0.15)
             confidence = base_confidence + variation
         elif pattern_shape == 1:
-            # Sinusoidal pattern
-            frequency = random.uniform(5, 20)  # Number of oscillations
-            amplitude = random.uniform(0.1, 0.3)  # Size of oscillations
+            frequency = rng.uniform(5, 20)
+            amplitude = rng.uniform(0.1, 0.3)
             confidence = base_confidence + amplitude * math.sin(position * frequency)
         elif pattern_shape == 2:
-            # Bell curve - peak in the middle
-            peak_position = random.uniform(0.3, 0.7)  # Where the peak occurs
-            spread = random.uniform(0.1, 0.3)  # How wide the peak is
-            height = random.uniform(0.1, 0.4)  # How high the peak is
+            peak_position = rng.uniform(0.3, 0.7)
+            spread = rng.uniform(0.1, 0.3)
+            height = rng.uniform(0.1, 0.4)
             confidence = base_confidence + height * math.exp(-((position - peak_position) ** 2) / (2 * spread ** 2))
         else:
-            # Gradual shift
-            shift_direction = random.choice([-1, 1])  # -1: decreasing, 1: increasing
-            shift_amount = random.uniform(0.1, 0.3)  # How much it changes
+            shift_direction = rng.choice([-1, 1])
+            shift_amount = rng.uniform(0.1, 0.3)
             confidence = base_confidence + shift_direction * shift_amount * position
         
-        # Add small random noise
-        noise = random.uniform(-0.05, 0.05)
+        noise = rng.uniform(-0.05, 0.05)
         confidence += noise
-        
-        # Apply model accuracy boost and clip to valid range
         confidence = min(max(confidence + accuracy_boost, 0.05), 0.95)
         
         results.append({
@@ -297,56 +273,37 @@ async def process_video(file: UploadFile = File(...), model: str = Form("mesonet
         accuracy_boost = 0.05 if model == "xceptionnet" else 0.0
         
         # Create a unique pattern for this video based on a hash of the filename
-        # This ensures different videos get different patterns, but the same video always gets the same pattern
         filename_hash = hash(file.filename if file.filename else "default") % 10000
-        random.seed(filename_hash)
+        rng = random.Random(filename_hash)
         
-        # Create more balanced pattern types
-        # 0-2: Mostly real, 3-6: Mixed/uncertain, 7-9: Mostly fake
-        pattern_type = random.randint(0, 9)
-        
-        # Base confidence level (0.2-0.8)
+        pattern_type = rng.randint(0, 9)
         base_confidence = 0.2 + (pattern_type / 10.0) * 0.6
+        pattern_shape = rng.randint(0, 3)
         
-        # Determine the primary pattern shape
-        pattern_shape = random.randint(0, 3)
-        
-        # Generate results for frames throughout the entire video
         for frame_idx in range(0, total_frames, frame_interval):
-            # Make sure we don't exceed the actual video duration
             if frame_idx / fps > duration:
                 break
                 
-            # Calculate normalized position in video (0.0 to 1.0)
             position = frame_idx / total_frames
-            
-            # Apply the pattern shape
             if pattern_shape == 0:
-                # Flat pattern with small variations
-                variation = random.uniform(-0.15, 0.15)
+                variation = rng.uniform(-0.15, 0.15)
                 confidence = base_confidence + variation
             elif pattern_shape == 1:
-                # Sinusoidal pattern
-                frequency = random.uniform(5, 20)  # Number of oscillations
-                amplitude = random.uniform(0.1, 0.3)  # Size of oscillations
+                frequency = rng.uniform(5, 20)
+                amplitude = rng.uniform(0.1, 0.3)
                 confidence = base_confidence + amplitude * math.sin(position * frequency)
             elif pattern_shape == 2:
-                # Bell curve - peak in the middle
-                peak_position = random.uniform(0.3, 0.7)  # Where the peak occurs
-                spread = random.uniform(0.1, 0.3)  # How wide the peak is
-                height = random.uniform(0.1, 0.4)  # How high the peak is
+                peak_position = rng.uniform(0.3, 0.7)
+                spread = rng.uniform(0.1, 0.3)
+                height = rng.uniform(0.1, 0.4)
                 confidence = base_confidence + height * math.exp(-((position - peak_position) ** 2) / (2 * spread ** 2))
             else:
-                # Gradual shift
-                shift_direction = random.choice([-1, 1])  # -1: decreasing, 1: increasing
-                shift_amount = random.uniform(0.1, 0.3)  # How much it changes
+                shift_direction = rng.choice([-1, 1])
+                shift_amount = rng.uniform(0.1, 0.3)
                 confidence = base_confidence + shift_direction * shift_amount * position
             
-            # Add small random noise
-            noise = random.uniform(-0.05, 0.05)
+            noise = rng.uniform(-0.05, 0.05)
             confidence += noise
-            
-            # Apply model accuracy boost and clip to valid range
             confidence = min(max(confidence + accuracy_boost, 0.05), 0.95)
             
             mock_results.append({

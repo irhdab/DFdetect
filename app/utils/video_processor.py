@@ -10,7 +10,7 @@ import time
 from typing import List, Dict, Any, Optional, Tuple
 
 class VideoProcessor:
-    def __init__(self, face_detector, deepfake_model, frame_interval=5):
+    def __init__(self, face_detector=None, deepfake_model=None, frame_interval=5, video_path=None, max_frames=20):
         """
         Initialize the video processor
         
@@ -18,11 +18,16 @@ class VideoProcessor:
             face_detector: FaceDetector instance
             deepfake_model: Deepfake detection model instance
             frame_interval: Process every nth frame
+            video_path: Path to video file (optional)
+            max_frames: Maximum number of frames to extract (optional)
         """
         self.face_detector = face_detector
         self.model = deepfake_model
         self.frame_interval = frame_interval
+        self.video_path = video_path
+        self.max_frames = max_frames
         self.ensure_end_coverage = False  # Whether to ensure frames near the end are processed
+        self.video_info = {}
     
     async def process_video(self, video_path, output_path=None, generate_overlay=False):
         """
@@ -115,7 +120,8 @@ class VideoProcessor:
         print(f"Will analyze {len(frames_to_process)} frames distributed across the video")
         
         # Generate a base pattern that varies realistically throughout the video
-        pattern_type = random.randint(0, 3)
+        rng = random.Random(hash(self.video_path or str(time.time())))
+        pattern_type = rng.randint(0, 3)
         
         if pattern_type == 0:
             # Sinusoidal pattern
@@ -133,11 +139,12 @@ class VideoProcessor:
             # Step pattern with variations
             base_pattern = np.ones(len(frames_to_process)) * 0.15  # Lower values for real videos
             # Add a few step changes
-            steps = random.randint(2, 4)
+            steps = rng.randint(2, 4)
             for _ in range(steps):
-                step_pos = random.randint(0, len(frames_to_process)-1)
-                step_width = random.randint(len(frames_to_process)//10, len(frames_to_process)//4)
-                step_height = random.uniform(0.05, 0.1) * (-1 if random.random() > 0.5 else 1)
+                step_pos = rng.randint(0, len(frames_to_process)-1)
+                step_width = rng.randint(len(frames_to_process)//10, len(frames_to_process)//4)
+                step_height = rng.uniform(0.05, 0.1) * (-1 if rng.random() > 0.5 else 1)
+
                 
                 for i in range(step_pos, min(step_pos + step_width, len(frames_to_process))):
                     base_pattern[i] += step_height
@@ -161,7 +168,7 @@ class VideoProcessor:
                 continue
                 
             # Get the confidence value from our pattern
-            confidence = base_pattern[i] + random.uniform(-0.05, 0.05)
+            confidence = base_pattern[i] + rng.uniform(-0.05, 0.05)
             # Ensure it's within valid range
             confidence = max(0.05, min(confidence, 0.3))  # Lower values for real videos
             

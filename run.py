@@ -32,10 +32,10 @@ app = FastAPI(
 # Increase file upload size limits (500MB)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"],  # Allow all headers
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Set up file size limits for requests
@@ -178,45 +178,30 @@ def get_available_models():
     return [get_model_info(model) for model in AVAILABLE_MODELS]
 
 def reset_random_state():
-    """Reset random state for fresh analysis"""
-    # Use a combination of current time with microsecond precision and session ID for truly unique seed
-    session_seed = hash(session_manager.current_session_id) % 1000000 if session_manager.current_session_id else 0
-    time_seed = int(time.time() * 1000000) % 1000000
-    # Add microsecond precision and additional random component to ensure uniqueness
-    microsecond = int((time.time() % 1) * 1000000)
-    extra_random = random.randint(1, 1000000)  # Additional randomization
-    final_seed = (session_seed + time_seed + microsecond + extra_random) % 2000000
-    
-    # Reset the random state completely
-    random.seed(None)  # Reset to system entropy first
-    random.seed(final_seed)  # Then set our custom seed
-    print(f"   Random state fully reset with unique seed: {final_seed}")
+    """Deprecated - Random state is now managed locally per-analysis"""
+    pass
 
 def generate_dynamic_results(model_name, total_frames, fps, duration, analysis_id=None):
     """Generate dynamic analysis results that change each time"""
-    # Reset random state for this analysis
-    reset_random_state()
-    
-    # Additional randomization based on analysis_id
-    if analysis_id:
-        analysis_seed = hash(analysis_id) % 1000
-        current_seed = random.getstate()[1][0]  # Get current seed
-        random.seed(current_seed + analysis_seed)
+    # Use localized random instance based on analysis_id and current time
+    analysis_seed = hash(analysis_id) % 1000000 if analysis_id else 0
+    time_seed = int(time.time() * 1000000) % 1000000
+    rng = random.Random(analysis_seed + time_seed)
     
     accuracy_boost = 0.05 if model_name == "xceptionnet" else 0.0
     frame_interval = 5  # Process every 5th frame
     results = []
     
     # Create varying pattern types for different analyses with higher accuracy
-    pattern_type = random.randint(0, 9)
+    pattern_type = rng.randint(0, 9)
     base_confidence = 0.65 + (pattern_type / 10.0) * 0.3  # Higher accuracy range: 0.65-0.95
     
     # More varied pattern shapes
-    pattern_shape = random.randint(0, 5)  # Increased pattern variety
+    pattern_shape = rng.randint(0, 5)  # Increased pattern variety
     
     # Dynamic parameters that change per analysis
-    noise_level = random.uniform(0.05, 0.15)  # Variable noise
-    variation_intensity = random.uniform(0.1, 0.4)  # How much the pattern varies
+    noise_level = rng.uniform(0.05, 0.15)  # Variable noise
+    variation_intensity = rng.uniform(0.1, 0.4)  # How much the pattern varies
     
     print(f"   Analysis Pattern - Type: {pattern_type}, Shape: {pattern_shape}, Base: {base_confidence:.2f}")
     
@@ -228,58 +213,44 @@ def generate_dynamic_results(model_name, total_frames, fps, duration, analysis_i
         
         # Apply different pattern shapes with more variety
         if pattern_shape == 0:
-            # Flat pattern with variable noise
-            variation = random.uniform(-variation_intensity, variation_intensity)
+            variation = rng.uniform(-variation_intensity, variation_intensity)
             confidence = base_confidence + variation
-            
         elif pattern_shape == 1:
-            # Sinusoidal pattern with random frequency
-            frequency = random.uniform(3, 25)
-            amplitude = random.uniform(0.1, variation_intensity)
+            frequency = rng.uniform(3, 25)
+            amplitude = rng.uniform(0.1, variation_intensity)
             confidence = base_confidence + amplitude * math.sin(position * frequency)
-            
         elif pattern_shape == 2:
-            # Bell curve with random peak
-            peak_position = random.uniform(0.2, 0.8)
-            spread = random.uniform(0.05, 0.4)
-            height = random.uniform(0.1, variation_intensity)
+            peak_position = rng.uniform(0.2, 0.8)
+            spread = rng.uniform(0.05, 0.4)
+            height = rng.uniform(0.1, variation_intensity)
             confidence = base_confidence + height * math.exp(-((position - peak_position) ** 2) / (2 * spread ** 2))
-            
         elif pattern_shape == 3:
-            # Gradual shift with random direction
-            shift_direction = random.choice([-1, 1])
-            shift_amount = random.uniform(0.1, variation_intensity)
+            shift_direction = rng.choice([-1, 1])
+            shift_amount = rng.uniform(0.1, variation_intensity)
             confidence = base_confidence + shift_direction * shift_amount * position
-            
         elif pattern_shape == 4:
-            # Step function - sudden changes
-            step_points = sorted([random.uniform(0.2, 0.8) for _ in range(random.randint(1, 3))])
-            step_values = [random.uniform(-variation_intensity, variation_intensity) for _ in range(len(step_points) + 1)]
+            step_points = sorted([rng.uniform(0.2, 0.8) for _ in range(rng.randint(1, 3))])
+            step_values = [rng.uniform(-variation_intensity, variation_intensity) for _ in range(len(step_points) + 1)]
             
             confidence = base_confidence + step_values[0]
             for i, step_point in enumerate(step_points):
                 if position >= step_point:
                     confidence = base_confidence + step_values[i + 1]
-                    
         else:  # pattern_shape == 5
-            # Chaotic pattern - multiple sine waves
             confidence = base_confidence
-            for i in range(random.randint(2, 4)):
-                freq = random.uniform(5, 30)
-                amp = random.uniform(0.05, variation_intensity / 2)
-                phase = random.uniform(0, 2 * math.pi)
+            for i in range(rng.randint(2, 4)):
+                freq = rng.uniform(5, 30)
+                amp = rng.uniform(0.05, variation_intensity / 2)
+                phase = rng.uniform(0, 2 * math.pi)
                 confidence += amp * math.sin(position * freq + phase)
         
-        # Add dynamic noise
-        noise = random.uniform(-noise_level, noise_level)
+        noise = rng.uniform(-noise_level, noise_level)
         confidence += noise
-        
-        # Apply model accuracy boost and clip to valid range
         confidence = min(max(confidence + accuracy_boost, 0.02), 0.98)
         
         results.append({
             "frame": frame_idx,
-            "confidence_fake": round(confidence, 3)  # More precision for varied results
+            "confidence_fake": round(confidence, 3)
         })
     
     print(f"   Generated {len(results)} analysis results")
@@ -320,6 +291,9 @@ async def get_session_info():
 @app.post("/upload/")
 async def upload_video(file: UploadFile = File(...), model: str = Form("mesonet")):
     """Upload and process a video file - starts new analysis session"""
+    if file and not file.content_type.startswith('video/') and not file.filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a video.")
+        
     # Start new session for this analysis
     session_id = session_manager.start_new_session("video_upload")
     
@@ -331,11 +305,27 @@ async def upload_video(file: UploadFile = File(...), model: str = Form("mesonet"
     file_id = str(uuid.uuid4())
     analysis_id = str(uuid.uuid4())  # Unique ID for this analysis
     
+    # Save the uploaded file
+    file_ext = Path(file.filename).suffix if file.filename else ".mp4"
+    if not file_ext:
+        file_ext = ".mp4"
+    
+    upload_path = Path("app/uploads") / f"{file_id}{file_ext}"
+    try:
+        contents = await file.read()
+        with open(upload_path, "wb") as f:
+            f.write(contents)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save video: {str(e)}")
+        
+    session_manager.add_temp_file(str(upload_path))
+    
     # Store analysis metadata
     processing_cache[file_id] = {
         "analysis_id": analysis_id,
         "session_id": session_id,
         "model": model,
+        "filepath": str(upload_path),
         "timestamp": time.time(),
         "status": "processing"
     }
@@ -417,8 +407,12 @@ async def get_result(file_id: str, request: Request):
     
     # Get analysis info if available
     analysis_info = processing_cache.get(file_id, {})
-    model = analysis_info.get("model", random.choice(AVAILABLE_MODELS))
     analysis_id = analysis_info.get("analysis_id", str(uuid.uuid4()))
+    rng = random.Random(hash(analysis_id) % 1000000)
+    
+    model = analysis_info.get("model")
+    if not model in AVAILABLE_MODELS:
+        model = rng.choice(AVAILABLE_MODELS)
     
     print(f"   Analysis ID: {analysis_id}")
     print(f"   Model: {model}")
@@ -426,8 +420,30 @@ async def get_result(file_id: str, request: Request):
     
     # Generate a fresh server session ID for this result to prevent browser caching
     server_session_id = f"srv_{uuid.uuid4()}"
-    
     model_info = get_model_info(model)
+    
+    # Try to get actual video info if filepath exists
+    video_path = analysis_info.get("filepath")
+    width, height = 1280, 720
+    if video_path and os.path.exists(video_path):
+        try:
+            import cv2
+            cap = cv2.VideoCapture(video_path)
+            if cap.isOpened():
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                if fps > 0:
+                    duration = total_frames / fps
+            cap.release()
+        except Exception:
+            pass
+            
+    if total_frames <= 0 or fps <= 0:
+        total_frames = 600
+        fps = 30
+        duration = 20.0
     
     # Generate completely new results for this session
     results = []
@@ -438,45 +454,30 @@ async def get_result(file_id: str, request: Request):
     # Beginning section (first 20% of video) - analyze more frames here
     start_frame = 0
     end_frame = int(total_frames * 0.2)
-    interval = 10  # Every 10th frame
+    interval = max(1, total_frames // 60)  # Dynamic interval
     for frame in range(start_frame, end_frame, interval):
-        # Generate a confidence value (high for clear results)
-        confidence = 0.85 + random.uniform(-0.05, 0.05)
-        results.append({
-            "frame": frame, 
-            "confidence_fake": round(confidence, 3)
-        })
+        confidence = 0.85 + rng.uniform(-0.05, 0.05)
+        results.append({"frame": frame, "confidence_fake": round(confidence, 3)})
     
     # Middle section (20%-80% of video) - less dense analysis
     start_frame = end_frame
     end_frame = int(total_frames * 0.8)
-    interval = 20  # Every 20th frame
+    interval = max(1, total_frames // 30)
     for frame in range(start_frame, end_frame, interval):
-        # Generate a confidence value with more variation
-        confidence = 0.85 + random.uniform(-0.1, 0.1)
-        results.append({
-            "frame": frame,
-            "confidence_fake": round(confidence, 3)
-        })
+        confidence = 0.85 + rng.uniform(-0.1, 0.1)
+        results.append({"frame": frame, "confidence_fake": round(confidence, 3)})
     
     # End section (last 20% of video) - analyze more frames here
     start_frame = end_frame
     end_frame = total_frames
-    interval = 10  # Every 10th frame
+    interval = max(1, total_frames // 60)
     for frame in range(start_frame, end_frame, interval):
-        # Generate a confidence value
-        confidence = 0.85 + random.uniform(-0.05, 0.05)
-        results.append({
-            "frame": frame,
-            "confidence_fake": round(confidence, 3)
-        })
+        confidence = 0.85 + rng.uniform(-0.05, 0.05)
+        results.append({"frame": frame, "confidence_fake": round(confidence, 3)})
     
     # Always include the very last frame
-    if total_frames - 1 not in [r["frame"] for r in results]:
-        results.append({
-            "frame": total_frames - 1,
-            "confidence_fake": round(0.87 + random.uniform(-0.05, 0.05), 3)
-        })
+    if results and total_frames - 1 not in [r["frame"] for r in results]:
+        results.append({"frame": total_frames - 1, "confidence_fake": round(0.87 + rng.uniform(-0.05, 0.05), 3)})
     
     # Log the frame coverage
     print(f"   Generated {len(results)} analysis points")
@@ -505,8 +506,8 @@ async def get_result(file_id: str, request: Request):
         "video_info": {
             "total_frames": total_frames,
             "fps": fps,
-            "width": 1280,
-            "height": 720,
+            "width": width,
+            "height": height,
             "duration": duration
         }
     }
@@ -596,8 +597,11 @@ async def process_video(file: UploadFile = File(...), model: str = Form("mesonet
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
     finally:
-        # Temp file will be cleaned up by session manager
-        pass
+        if os.path.exists(temp_file.name):
+            try:
+                os.unlink(temp_file.name)
+            except Exception:
+                pass
 
 @app.websocket("/ws/webcam")
 async def websocket_endpoint(websocket: WebSocket, model: str = Query("mesonet")):
@@ -617,22 +621,21 @@ async def websocket_endpoint(websocket: WebSocket, model: str = Query("mesonet")
         active_connections.append(websocket)
         print(f"   WebSocket connected, total active: {len(active_connections)}")
         
-        # Reset random state for this webcam session
-        reset_random_state()
+        rng = random.Random(hash(session_id))
         
         model_info = get_model_info(model)
         accuracy_boost = 0.2 if model == "xceptionnet" else 0.15
         
         # Create dynamic baseline that changes over time
-        base_confidence = random.uniform(0.2, 0.6)
-        confidence_evolution = random.choice([-0.001, 0.001, 0.002])  # How confidence evolves
-        pattern_frequency = random.uniform(0.1, 0.3)  # How often pattern changes
+        base_confidence = rng.uniform(0.2, 0.6)
+        confidence_evolution = rng.choice([-0.001, 0.001, 0.002])  # How confidence evolves
+        pattern_frequency = rng.uniform(0.1, 0.3)  # How often pattern changes
         
         frame_idx = 0
         last_message_time = time.time()
         message_interval = 0.2
         last_pattern_change = time.time()
-        pattern_change_interval = random.uniform(5, 15)  # Change pattern every 5-15 seconds
+        pattern_change_interval = rng.uniform(5, 15)  # Change pattern every 5-15 seconds
         
         while True:
             current_time = time.time()
@@ -641,10 +644,10 @@ async def websocket_endpoint(websocket: WebSocket, model: str = Query("mesonet")
             
             # Change pattern periodically for more dynamic behavior
             if current_time - last_pattern_change > pattern_change_interval:
-                base_confidence = random.uniform(0.2, 0.7)
-                confidence_evolution = random.choice([-0.002, -0.001, 0.001, 0.002])
-                pattern_frequency = random.uniform(0.1, 0.4)
-                pattern_change_interval = random.uniform(5, 15)
+                base_confidence = rng.uniform(0.2, 0.7)
+                confidence_evolution = rng.choice([-0.002, -0.001, 0.001, 0.002])
+                pattern_frequency = rng.uniform(0.1, 0.4)
+                pattern_change_interval = rng.uniform(5, 15)
                 last_pattern_change = current_time
                 print(f"   Pattern changed - new base: {base_confidence:.2f}")
             
@@ -652,10 +655,10 @@ async def websocket_endpoint(websocket: WebSocket, model: str = Query("mesonet")
             evolved_confidence = base_confidence + (frame_idx * confidence_evolution)
             
             # Add pattern variation
-            pattern_variation = 0.2 * math.sin(frame_idx * pattern_frequency) * random.uniform(0.5, 1.5)
+            pattern_variation = 0.2 * math.sin(frame_idx * pattern_frequency) * rng.uniform(0.5, 1.5)
             
             # Add random noise
-            noise = random.uniform(-0.1, 0.1)
+            noise = rng.uniform(-0.1, 0.1)
             
             # Calculate final confidence
             confidence = min(max(evolved_confidence + pattern_variation + noise + accuracy_boost, 0.05), 0.95)

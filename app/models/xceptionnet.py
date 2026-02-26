@@ -26,19 +26,9 @@ class XceptionNet:
         """Prepare image for inference"""
         # Just return the image for mock testing
         return image
-    
-    def save_to_onnx(self, path):
-        """Convert model to ONNX format for faster inference"""
-        import tf2onnx
-        import onnx
-        
-        # Create input signature
-        signatures = [tf.TensorSpec((None, 224, 224, 3), tf.float32, name='input')]
-        
-        # Convert the model
-        onnx_model, _ = tf2onnx.convert.from_keras(self.model, input_signature=signatures, opset=13)
-        
-        # Save the model
-        onnx.save(onnx_model, path)
-        
-        return path 
+    async def save_to_onnx(self, output_path: str):
+        """Mock method for saving to ONNX format"""
+        # In a real implementation, we would use tf2onnx to convert the model
+        print(f"Mock: Saving XceptionNet model to ONNX at {output_path}")
+        await asyncio.sleep(0.5)
+        return True
